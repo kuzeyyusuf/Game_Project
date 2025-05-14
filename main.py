@@ -17,9 +17,17 @@ GREEN = (0, 200, 0)
 BLUE = (80, 80, 255)
 RED = (200, 0, 0)
 
+def extract_flame_frames(sheet, frame_width, frame_height):
+    frames = []
+    for i in range(sheet.get_width() // frame_width):
+        x = i * frame_width
+        frame = sheet.subsurface((x, 0, frame_width, frame_height))
+        frames.append(frame)
+    return frames
+
 font = pygame.font.SysFont(None, 36)
 
-# Background
+
 background_layer1 = pygame.image.load("Assets/background_layer_1.png")
 background_layer1 = pygame.transform.scale(background_layer1, (WIDTH, HEIGHT))
 
@@ -33,6 +41,28 @@ combat_ground = pygame.image.load("Assets/combat_ground.png").convert_alpha()
 combat_ground = pygame.transform.scale(combat_ground, (280, 160))  # Genişliği ve yüksekliği ayarlayabilirsin
 
 
+flame_frames = []
+flame_start_frames = []
+flame_end_frames = []
+
+
+flame_frames += extract_flame_frames(pygame.image.load("Assets/burning_loop_1.png").convert_alpha(), 24, 32)
+flame_frames += extract_flame_frames(pygame.image.load("Assets/burning_loop_2.png").convert_alpha(), 20, 24)
+flame_frames += extract_flame_frames(pygame.image.load("Assets/burning_loop_3.png").convert_alpha(), 15, 24)
+flame_frames += extract_flame_frames(pygame.image.load("Assets/burning_loop_4.png").convert_alpha(), 10, 20)
+flame_frames += extract_flame_frames(pygame.image.load("Assets/burning_loop_5.png").convert_alpha(), 8, 8)
+
+flame_start_frames += extract_flame_frames(pygame.image.load("Assets/burning_start_1.png").convert_alpha(), 24, 32)
+flame_start_frames += extract_flame_frames(pygame.image.load("Assets/burning_start_2.png").convert_alpha(), 20, 24)
+flame_start_frames += extract_flame_frames(pygame.image.load("Assets/burning_start_3.png").convert_alpha(), 15, 24)
+flame_start_frames += extract_flame_frames(pygame.image.load("Assets/burning_start_4.png").convert_alpha(), 10, 20)
+flame_start_frames += extract_flame_frames(pygame.image.load("Assets/burning_start_5.png").convert_alpha(), 8, 8)
+
+flame_end_frames += extract_flame_frames(pygame.image.load("Assets/burning_end_1.png").convert_alpha(), 24, 32)
+flame_end_frames += extract_flame_frames(pygame.image.load("Assets/burning_end_2.png").convert_alpha(), 20, 24)
+flame_end_frames += extract_flame_frames(pygame.image.load("Assets/burning_end_3.png").convert_alpha(), 15, 24)
+flame_end_frames += extract_flame_frames(pygame.image.load("Assets/burning_end_4.png").convert_alpha(), 10, 20)
+flame_end_frames += extract_flame_frames(pygame.image.load("Assets/burning_end_5.png").convert_alpha(), 8, 8)
 
 # Grid layout
 GRID_SIZE = 4
@@ -42,8 +72,8 @@ MARGIN_X = (640 - (GRID_SIZE * (CELL_SIZE + PADDING))) // 2
 MARGIN_Y = 60
 
 # Game state
-mage_hp = 10
-knight_hp = 10
+mage_hp = 50
+knight_hp = 50
 current_player = 1  # 1: Mage, 2: Knight
 current_count = 2
 sequence = []
@@ -53,6 +83,14 @@ countdown_active = False
 countdown_start_time = 0
 COUNTDOWN_DURATION = 4000
 game_over = False
+shake_timer = 0
+shake_duration = 300
+shake_magnitude = 8
+flame_phase = "start"
+flame_index = 0
+flame_timer = 0
+flame_speed = 100
+
 
 awaiting_enter_to_start = True
 awaiting_next_round = False
@@ -82,7 +120,7 @@ idle_sheet = pygame.image.load("Assets/Sprites/Idle.png").convert_alpha()
 attack_sheet = pygame.image.load("Assets/Sprites/Attack.png").convert_alpha()
 hurt_sheet = pygame.image.load("Assets/Sprites/Take Hit.png").convert_alpha()
 death_sheet = pygame.image.load("Assets/Sprites/Death.png").convert_alpha()
-# Knight sprite'larını yükle
+
 knight_idle_sheet = pygame.image.load("Assets/Idle.png").convert_alpha()
 knight_attack_sheet = pygame.image.load("Assets/Attacks.png").convert_alpha()
 knight_hurt_sheet = pygame.image.load("Assets/Hurt.png").convert_alpha()
@@ -92,7 +130,7 @@ idle_frames = extract_frames(idle_sheet, 8, 1, 150, 150)
 attack_frames = extract_frames(attack_sheet, 8, 1, 150, 150)
 hurt_frames = extract_frames(hurt_sheet, 4, 1, 150, 150)
 death_frames = extract_frames(death_sheet, 5, 1, 150, 150)
-# Knight animasyon karelerini çıkart
+
 knight_idle_frames = extract_frames(knight_idle_sheet, 2, 4, 128, 64, flip=True)
 knight_attack_frames = extract_frames(knight_attack_sheet, 8, 5, 128, 64, flip=True)
 knight_hurt_frames = extract_frames(knight_hurt_sheet, 2, 2, 128, 64, skip=[3], flip=True)
@@ -134,12 +172,45 @@ def generate_sequence(count):
     random.shuffle(numbers)
     return list(zip(positions, numbers))
 
+# HP çubuğu çizimi
+def draw_hp_bar(x, y, hp, max_hp, color):
+    bar_width = 100
+    bar_height = 10
+    fill_width = int((hp / max_hp) * bar_width)
+    pygame.draw.rect(screen, BLACK, (x, y, bar_width, bar_height))  # Çerçeve
+    pygame.draw.rect(screen, color, (x, y, fill_width, bar_height))  # Dolu kısım
+
+
 def get_cell_rect(index):
     row = index // GRID_SIZE
     col = index % GRID_SIZE
     x = MARGIN_X + col * (CELL_SIZE + PADDING)
     y = MARGIN_Y + row * (CELL_SIZE + PADDING)
     return pygame.Rect(x, y, CELL_SIZE, CELL_SIZE)
+
+def draw_grid_cell(rect, is_revealed=False, is_clicked=False):
+    base_color = (200, 200, 200) if is_revealed else (180, 180, 180)
+    border_color = (100, 100, 100)
+    highlight_color = (255, 255, 255)
+
+    # Ana kutu
+    pygame.draw.rect(screen, base_color, rect, border_radius=4)
+
+    # Parlak kenarlar (üst ve sol)
+    pygame.draw.line(screen, highlight_color, rect.topleft, rect.topright, 2)
+    pygame.draw.line(screen, highlight_color, rect.topleft, rect.bottomleft, 2)
+
+    # Gölge kenarlar (alt ve sağ)
+    pygame.draw.line(screen, border_color, rect.bottomleft, rect.bottomright, 2)
+    pygame.draw.line(screen, border_color, rect.topright, rect.bottomright, 2)
+
+    # Çerçeve
+    pygame.draw.rect(screen, BLACK, rect, 2, border_radius=4)
+
+    # Tıklanmışsa maviyle doldur
+    if is_clicked:
+        pygame.draw.rect(screen, (80, 80, 255), rect, 0, border_radius=4)
+
 
 def start_new_round(success=True):
     global sequence, clicked_sequence, message, awaiting_next_round
@@ -149,7 +220,7 @@ def start_new_round(success=True):
 
     if success:
         current_count += 1
-        message = f"✅ Success! Press ENTER for next round ({current_count})"
+        message = f" Success! Press ENTER for next round ({current_count})"
         awaiting_next_round = True
         awaiting_enter_to_start = False
     else:
@@ -172,12 +243,48 @@ sequence = generate_sequence(current_count)
 
 running = True
 while running:
+    # Ekran sarsıntısı
+    shake_offset = [0, 0]
+    if shake_timer > 0:
+        shake_offset[0] = random.randint(-shake_magnitude, shake_magnitude)
+        shake_offset[1] = random.randint(-shake_magnitude, shake_magnitude)
+        shake_timer -= dt
+
     dt = clock.tick(FPS)
     now = pygame.time.get_ticks()
-    screen.blit(background_layer1, (0, 0))  # En arkadaki katman
-    screen.blit(background_layer2, (0, 0))  # Orta katman
-    screen.blit(background_layer3, (0, 0))  # En öndeki katman
-    screen.blit(combat_ground, (560, 220))
+    screen.blit(background_layer1, (0 + shake_offset[0], 0 + shake_offset[1]))
+    screen.blit(background_layer2, (0 + shake_offset[0], 0 + shake_offset[1]))
+    screen.blit(background_layer3, (0 + shake_offset[0], 0 + shake_offset[1]))
+    screen.blit(combat_ground, (560 + shake_offset[0], 220 + shake_offset[1]))
+
+    # Oyuncu sırası göstergesi
+    if not game_over:
+        if current_player == 1:
+            turn_text = font.render(" Mage's Turn", True, (0, 0, 0))
+        else:
+            turn_text = font.render(" Knight's Turn", True, (0, 0, 0))
+
+        screen.blit(turn_text, (10, 10))
+
+    flame_timer += dt
+    if flame_timer >= flame_speed:
+        flame_timer = 0
+        flame_index += 1
+
+        if flame_phase == "start":
+            if flame_index >= len(flame_start_frames):
+                flame_index = 0
+                flame_phase = "loop"
+
+        elif flame_phase == "loop":
+            if flame_index >= len(flame_frames):
+                flame_index = 0
+                flame_phase = "end"
+
+        elif flame_phase == "end":
+            if flame_index >= len(flame_end_frames):
+                flame_index = 0
+                flame_phase = "start"
 
     # Events
     for event in pygame.event.get():
@@ -221,10 +328,10 @@ while running:
 
             if event.key == pygame.K_RETURN and not game_over:
                 if awaiting_dice_roll and not dice_result_shown:
-                    dice_roll_result = random.randint(19, 20)
+                    dice_roll_result = random.randint(1, 20)
                     dice_result_shown = True
                     if dice_roll_result >= hit_threshold:
-                        message = f" Hit! (Rolled {dice_roll_result}) - Press ENTER to restart"
+                        message = f" Hit! (Rolled {dice_roll_result}) "
                         damage = dice_roll_result
                         if current_player == 2:
                             # Knight saldırıyor
@@ -236,12 +343,13 @@ while running:
                             mage_state = "hurt"
                             mage_frame_index = 0
                             mage_timer = 0
+                            shake_timer = shake_duration
                             mage_hp -= damage
                             if mage_hp <= 0:
                                 mage_state = "death"
                                 mage_frame_index = 0
                                 mage_timer = 0
-                                message += " ️ Mage is defeated!"
+                                message += " ️ Mage is defeated! Press R to restart"
                                 game_over = True
 
                         else:
@@ -254,12 +362,13 @@ while running:
                             knight_state = "hurt"
                             knight_hurt_index = 0
                             knight_timer = 0
+                            shake_timer = shake_duration
                             knight_hp -= damage
                             if knight_hp <= 0:
                                 knight_state = "death"
                                 knight_death_index = 0
                                 knight_timer = 0
-                                message += "  Knight is defeated!"
+                                message += "  Knight is defeated! Press R to restart"
                                 game_over = True
                     else:
                         message = f" Miss! (Rolled {dice_roll_result}) - Press ENTER to restart"
@@ -324,44 +433,42 @@ while running:
     # Draw grid
     for i in range(GRID_SIZE * GRID_SIZE):
         rect = get_cell_rect(i)
-        pygame.draw.rect(screen, GRAY, rect)
 
         matched = [(idx, n) for idx, n in sequence if idx == i]
-        if matched:
-            idx, num = matched[0]
-            if revealed:
-                pygame.draw.rect(screen, GREEN, rect)
-                text = font.render(str(num), True, BLACK)
-                screen.blit(text, text.get_rect(center=rect.center))
-            elif (idx, num) in clicked_sequence:
-                pygame.draw.rect(screen, BLUE, rect)
+        clicked = any(idx == i for (idx, n) in clicked_sequence)
+        revealed_now = matched and revealed
 
-        pygame.draw.rect(screen, BLACK, rect, 2)
+        draw_grid_cell(rect, is_revealed=revealed_now, is_clicked=clicked)
+
+        if matched and revealed:
+            idx, num = matched[0]
+            text = font.render(str(num), True, BLACK)
+            screen.blit(text, text.get_rect(center=rect.center))
 
     # Show hit threshold
     if last_failed_level and not dice_result_shown:
-        text = font.render(f"To Hit: Roll ≥ {hit_threshold} on a D20", True, RED)
-        screen.blit(text, (660, 20))
+        text = font.render(f"To Hit: Roll ≥ {hit_threshold} on a D20", True, BLACK)
+        screen.blit(text, (560, 180))
 
     # Show result message
     if message:
         label = font.render(message, True, RED if "Wrong" in message or "Miss" in message else BLACK)
         screen.blit(label, (WIDTH // 2 - label.get_width() // 2, HEIGHT - 40))
     # === HP göstergesi sağ alt köşe ===
-    heart_text = font.render("IIIIIIIIIIIIIIIIIIIII", True, RED)
+    heart_text = font.render("", True, RED)
     heart_x = WIDTH - 270
     heart_y = HEIGHT - 200
     screen.blit(heart_text, (heart_x, heart_y))
 
     # Mage ismi ve canı
     mage_label = font.render("Mage", True, BLACK)
-    mage_hp_text = font.render(f"HP: {mage_hp}", True, RED)
+    mage_hp_text = font.render(f"HP: {mage_hp}", True, BLACK)
     screen.blit(mage_label, (heart_x, heart_y + 30))
     screen.blit(mage_hp_text, (heart_x, heart_y + 55))
 
     # Knight ismi ve canı
     knight_label = font.render("Knight", True, BLACK)
-    knight_hp_text = font.render(f"HP: {knight_hp}", True, RED)
+    knight_hp_text = font.render(f"HP: {knight_hp}", True, BLACK)
     screen.blit(knight_label, (heart_x + 90, heart_y + 30))
     screen.blit(knight_hp_text, (heart_x + 90, heart_y + 55))
 
@@ -396,7 +503,7 @@ while running:
     elif mage_state == "death":
         mage_frame = death_frames[min(mage_frame_index, len(death_frames) - 1)]
 
-    screen.blit(mage_frame, (mage_x, mage_y))
+    screen.blit(mage_frame, (mage_x + shake_offset[0], mage_y + shake_offset[1]))
     # --- Knight animasyon kontrolü ---
     knight_timer += dt
 
@@ -434,7 +541,25 @@ while running:
         knight_frame = knight_death_frames[knight_death_index]
 
     # Ekrana çiz
-    screen.blit(knight_frame, (knight_x, knight_y))
+    screen.blit(knight_frame, (knight_x + shake_offset[0], knight_y + shake_offset[1]))
+
+    # HP çubukları
+    draw_hp_bar(mage_x, mage_y + 175, mage_hp, 50, RED)
+    draw_hp_bar(knight_x + 60, knight_y + 140, knight_hp, 50, RED)
+    # Flame
+    if flame_phase == "start":
+        flame_image = flame_start_frames[flame_index]
+    elif flame_phase == "loop":
+        flame_image = flame_frames[flame_index]
+    elif flame_phase == "end":
+        flame_image = flame_end_frames[flame_index]
+
+
+    flame_width = flame_image.get_width()
+    flame_height = flame_image.get_height()
+
+    for x in range(0, WIDTH, flame_width):
+        screen.blit(flame_image, (x, HEIGHT - flame_height))
 
     pygame.display.flip()
 
