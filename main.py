@@ -3,9 +3,12 @@ import sys
 import random
 
 pygame.init()
+pygame.init()
+pygame.mixer.init()
+
 WIDTH, HEIGHT = 900, 580
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Chimp Test + Mage Animation")
+pygame.display.set_caption("Chimp Test Battle Game")
 clock = pygame.time.Clock()
 FPS = 60
 
@@ -17,13 +20,7 @@ GREEN = (0, 200, 0)
 BLUE = (80, 80, 255)
 RED = (200, 0, 0)
 
-def extract_flame_frames(sheet, frame_width, frame_height):
-    frames = []
-    for i in range(sheet.get_width() // frame_width):
-        x = i * frame_width
-        frame = sheet.subsurface((x, 0, frame_width, frame_height))
-        frames.append(frame)
-    return frames
+
 
 font = pygame.font.SysFont(None, 36)
 
@@ -40,29 +37,35 @@ background_layer3 = pygame.transform.scale(background_layer3, (WIDTH, HEIGHT))
 combat_ground = pygame.image.load("Assets/combat_ground.png").convert_alpha()
 combat_ground = pygame.transform.scale(combat_ground, (280, 160))  # Genişliği ve yüksekliği ayarlayabilirsin
 
+playlist = [
+    "Assets/Music/track1.mp3",
+    "Assets/Music/track2.mp3",
+    "Assets/Music/track3.mp3",
+    "Assets/Music/track4.mp3",
+]
 
-flame_frames = []
-flame_start_frames = []
-flame_end_frames = []
 
+pepe_img = pygame.image.load("Assets/Chadge-3x.png").convert_alpha()
 
-flame_frames += extract_flame_frames(pygame.image.load("Assets/burning_loop_1.png").convert_alpha(), 24, 32)
-flame_frames += extract_flame_frames(pygame.image.load("Assets/burning_loop_2.png").convert_alpha(), 20, 24)
-flame_frames += extract_flame_frames(pygame.image.load("Assets/burning_loop_3.png").convert_alpha(), 15, 24)
-flame_frames += extract_flame_frames(pygame.image.load("Assets/burning_loop_4.png").convert_alpha(), 10, 20)
-flame_frames += extract_flame_frames(pygame.image.load("Assets/burning_loop_5.png").convert_alpha(), 8, 8)
+# Flüt animasyonu
+flute_frames = []
 
-flame_start_frames += extract_flame_frames(pygame.image.load("Assets/burning_start_1.png").convert_alpha(), 24, 32)
-flame_start_frames += extract_flame_frames(pygame.image.load("Assets/burning_start_2.png").convert_alpha(), 20, 24)
-flame_start_frames += extract_flame_frames(pygame.image.load("Assets/burning_start_3.png").convert_alpha(), 15, 24)
-flame_start_frames += extract_flame_frames(pygame.image.load("Assets/burning_start_4.png").convert_alpha(), 10, 20)
-flame_start_frames += extract_flame_frames(pygame.image.load("Assets/burning_start_5.png").convert_alpha(), 8, 8)
+for i in range(16):  # 0'dan 15'e kadar
+    image = pygame.image.load(f"Assets/Music/flute_{i}.png").convert_alpha()
+    flute_frames.append(image)
 
-flame_end_frames += extract_flame_frames(pygame.image.load("Assets/burning_end_1.png").convert_alpha(), 24, 32)
-flame_end_frames += extract_flame_frames(pygame.image.load("Assets/burning_end_2.png").convert_alpha(), 20, 24)
-flame_end_frames += extract_flame_frames(pygame.image.load("Assets/burning_end_3.png").convert_alpha(), 15, 24)
-flame_end_frames += extract_flame_frames(pygame.image.load("Assets/burning_end_4.png").convert_alpha(), 10, 20)
-flame_end_frames += extract_flame_frames(pygame.image.load("Assets/burning_end_5.png").convert_alpha(), 8, 8)
+guitar_frames = []
+
+for i in range(52):  # 0'dan 51'e kadar
+    image = pygame.image.load(f"Assets/Music/guitar_{i}.png").convert_alpha()
+    guitar_frames.append(image)
+
+drum_frames = []
+
+for i in range(16):  # 0'dan 15'e kadar
+    image = pygame.image.load(f"Assets/Music/drums_{i}.png").convert_alpha()
+    drum_frames.append(image)
+
 
 # Grid layout
 GRID_SIZE = 4
@@ -86,10 +89,17 @@ game_over = False
 shake_timer = 0
 shake_duration = 300
 shake_magnitude = 8
-flame_phase = "start"
-flame_index = 0
-flame_timer = 0
-flame_speed = 100
+flute_index = 0
+flute_timer = 0
+flute_speed = 120
+guitar_index = 0
+guitar_timer = 0
+guitar_speed = 80
+drum_index = 0
+drum_timer = 0
+drum_speed = 90
+current_track = 0
+
 
 
 awaiting_enter_to_start = True
@@ -241,6 +251,10 @@ def start_new_round(success=True):
 
 sequence = generate_sequence(current_count)
 
+pygame.mixer.music.load(playlist[current_track])
+pygame.mixer.music.set_volume(0.01)
+pygame.mixer.music.play()
+
 running = True
 while running:
     # Ekran sarsıntısı
@@ -257,6 +271,26 @@ while running:
     screen.blit(background_layer3, (0 + shake_offset[0], 0 + shake_offset[1]))
     screen.blit(combat_ground, (560 + shake_offset[0], 220 + shake_offset[1]))
 
+    if not pygame.mixer.music.get_busy():
+        current_track = (current_track + 1) % len(playlist)  # Sonraki şarkı (başa sarar)
+        pygame.mixer.music.load(playlist[current_track])
+        pygame.mixer.music.play()
+
+    flute_timer += dt
+    if flute_timer >= flute_speed:
+        flute_timer = 0
+        flute_index = (flute_index + 1) % len(flute_frames)
+
+    guitar_timer += dt
+    if guitar_timer >= guitar_speed:
+        guitar_timer = 0
+        guitar_index = (guitar_index + 1) % len(guitar_frames)
+
+    drum_timer += dt
+    if drum_timer >= drum_speed:
+        drum_timer = 0
+        drum_index = (drum_index + 1) % len(drum_frames)
+
     # Oyuncu sırası göstergesi
     if not game_over:
         if current_player == 1:
@@ -266,25 +300,7 @@ while running:
 
         screen.blit(turn_text, (10, 10))
 
-    flame_timer += dt
-    if flame_timer >= flame_speed:
-        flame_timer = 0
-        flame_index += 1
 
-        if flame_phase == "start":
-            if flame_index >= len(flame_start_frames):
-                flame_index = 0
-                flame_phase = "loop"
-
-        elif flame_phase == "loop":
-            if flame_index >= len(flame_frames):
-                flame_index = 0
-                flame_phase = "end"
-
-        elif flame_phase == "end":
-            if flame_index >= len(flame_end_frames):
-                flame_index = 0
-                flame_phase = "start"
 
     # Events
     for event in pygame.event.get():
@@ -371,7 +387,7 @@ while running:
                                 message += "  Knight is defeated! Press R to restart"
                                 game_over = True
                     else:
-                        message = f" Miss! (Rolled {dice_roll_result}) - Press ENTER to restart"
+                        message = f" Miss! (Rolled {dice_roll_result}) - Press ENTER "
 
                 elif awaiting_dice_roll and dice_result_shown:
                     sequence = generate_sequence(current_count)
@@ -546,20 +562,19 @@ while running:
     # HP çubukları
     draw_hp_bar(mage_x, mage_y + 175, mage_hp, 50, RED)
     draw_hp_bar(knight_x + 60, knight_y + 140, knight_hp, 50, RED)
-    # Flame
-    if flame_phase == "start":
-        flame_image = flame_start_frames[flame_index]
-    elif flame_phase == "loop":
-        flame_image = flame_frames[flame_index]
-    elif flame_phase == "end":
-        flame_image = flame_end_frames[flame_index]
+    # Flüt animasyonu çiz
+    flute_image = flute_frames[flute_index]
+    screen.blit(flute_image, (100, HEIGHT - flute_image.get_height() - 10))  # konumu ihtiyaca göre ayarla
 
+    guitar_image = guitar_frames[guitar_index]
+    screen.blit(guitar_image, (WIDTH - guitar_image.get_width() - 100, HEIGHT - guitar_image.get_height() - 400))
 
-    flame_width = flame_image.get_width()
-    flame_height = flame_image.get_height()
+    drum_image = drum_frames[drum_index]
+    screen.blit(drum_image, (750, HEIGHT - drum_image.get_height() ))  # konumu ihtiyaca göre değiştir
 
-    for x in range(0, WIDTH, flame_width):
-        screen.blit(flame_image, (x, HEIGHT - flame_height))
+    screen.blit(pepe_img, (0, 480))  # 1. konum
+    screen.blit(pepe_img, (590, 90))  # 2. konum
+    screen.blit(pepe_img, (650, 480))  # 3. konum
 
     pygame.display.flip()
 
